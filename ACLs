@@ -1,0 +1,91 @@
+## agent.hcl
+
+acl = {
+  enabled = true
+  default_policy = "deny"
+  enable_token_persistence = true
+}
+
+#---Initial bootstrap token---
+consul acl bootstrap
+
+
+#---necessary privileges to continue creating policies and tokens--
+
+export CONSUL_HTTP_TOKEN=<your_token_here>
+
+## consul-server-one-policy.hcl
+
+node "consul-server-one" {
+  policy = "write"
+}
+
+##initialize it using the Consul CLI.
+
+consul acl policy create \
+  -name consul-server-one \
+  -rules @consul-server-one-policy.hcl
+  
+ consul acl token create -description "consul-server-one agent token" \
+ -policy-name consul-server-one
+
+consul acl set-agent-token agent "<agent token here>"
+
+##--Service token--
+
+service {
+  name = "dashboard",
+  port = 9002,
+  check {
+    id = "dashboard-check",
+    http = "http://localhost:9002/health",
+    method = "GET",
+    interval = "1s",
+    timeout = "1s"
+  }
+}
+
+## dashboard-policy.hcl
+
+service "dashboard" {
+  policy = "write"
+}
+## initiate the policy.
+consul acl policy create -name "dashboard-service" \
+  -rules @dashboard-policy.hcl
+  
+## create a token with the policy
+consul acl token create -description "Token for Dashboard Service" \
+  -policy-name dashboard-service
+## --Finally, add the token to the service definition--
+
+service {
+  name = "dashboard",
+  port = 9002,
+  token = "57c5d69a-5f19-469b-0543-12a487eecc66",
+  check {
+    id = "dashboard-check",
+    http = "http://localhost:9002/health",
+    method = "GET",
+    interval = "1s",
+    timeout = "1s"
+  }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

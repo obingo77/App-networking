@@ -1,0 +1,13 @@
+#(dc1)
+consul operator area create -peer-datacenter=dc2
+
+# (dc2)
+consul operator area create -peer-datacenter=dc1
+
+# (dc1)
+consul operator area join -peer-datacenter=dc2 10.20.10.12
+
+#--Route RPCs--
+
+# (dc1)
+consul kv put -datacenter=dc2 hello_from_dc1 world

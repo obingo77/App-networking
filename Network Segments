@@ -1,0 +1,71 @@
+#---Segments.hcl---
+
+segments= [
+  {
+    name= "alpha"
+    bind= "{{GetPrivateIP}}"
+    advertise= "{{GetPrivateIP}}"
+    port= 8303
+  },
+  {
+    name= "beta"
+    bind= "{{GetPrivateIP}}"
+    advertise= "{{GetPrivateIP}}"
+    port= 8304
+  }
+]
+
+# (client1)
+
+ consul agent ... -join 10.20.10.11:8303 -node client1 -segment alpha
+
+# (client2)
+ 
+ consul agent ... -join 10.20.10.11:8304 -node client2 -segment beta
+ 
+ #Service registeration
+ 
+ # (client1)
+$ curl \
+    --request PUT \
+    --data '{"Name": "redis", "Port": 8000}' \
+    localhost:8500/v1/agent/service/register
+
+# (client2)
+$ curl \
+    --request PUT \
+    --data '{"Name": "redis", "Port": 9000}' \
+    localhost:8500/v1/agent/service/register
+
+# ---query.json---
+
+# (server1)
+$ curl localhost:8500/v1/query \
+    --request POST \
+    --data @- << EOF
+{
+   "Name": "",
+   "Template": {
+     "Type": "name_prefix_match"
+   },
+   "Service": {
+     "Service": "${name.full}",
+     "NodeMeta": {"consul-network-segment": "${agent.segment}"}
+   }
+}
+EOF
+
+{"ID":"262cd847-e67c-7570-2122-ee70d3578256"}
+
+#DNS lookup
+# (client1)
+$ dig @127.0.0.1 -p 8600 redis.query.consul SRV
+# (client2)
+$ dig @127.0.0.1 -p 8600 redis.query.consul SRV
+
+
+
+ 
+ 
+
+

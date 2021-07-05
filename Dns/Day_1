@@ -1,0 +1,127 @@
+
+dns_config {
+  service_ttl {
+    "*" = "5s",
+    "web" = "30s",
+    "db*" = "10s",
+    "db-master" = "3s"
+  }
+}
+
+#»BIND setup<<
+
+options {
+  listen-on port 53 { 127.0.0.1; };
+  listen-on-v6 port 53 { ::1; };
+  directory       "/var/named";
+  dump-file       "/var/named/data/cache_dump.db";
+  statistics-file "/var/named/data/named_stats.txt";
+  memstatistics-file "/var/named/data/named_mem_stats.txt";
+  allow-query     { localhost; };
+  recursion yes;
+
+  dnssec-enable no;
+  dnssec-validation no;
+
+  /* Path to ISC DLV key */
+  bindkeys-file "/etc/named.iscdlv.key";
+
+  managed-keys-directory "/var/named/dynamic";
+};
+
+include "/etc/named/consul.conf";
+
+#---consul.conf----
+
+zone "consul" IN {
+  type forward;
+  forward only;
+  forwarders { 127.0.0.1 port 8600; };
+};
+
+#----dnsmasq.conf----
+
+# Enable forward lookup of the 'consul' domain:
+server=/consul/127.0.0.1#8600
+
+# Uncomment and modify as appropriate to enable reverse DNS lookups for
+# common netblocks found in RFC 1918, 5735, and 6598:
+#rev-server=0.0.0.0/8,127.0.0.1#8600
+#rev-server=10.0.0.0/8,127.0.0.1#8600
+#rev-server=100.64.0.0/10,127.0.0.1#8600
+#rev-server=127.0.0.1/8,127.0.0.1#8600
+#rev-server=169.254.0.0/16,127.0.0.1#8600
+#rev-server=172.16.0.0/12,127.0.0.1#8600
+#rev-server=192.168.0.0/16,127.0.0.1#8600
+#rev-server=224.0.0.0/4,127.0.0.1#8600
+#rev-server=240.0.0.0/4,127.0.0.1#8600
+
+# Accept DNS queries only from hosts whose address is on a local subnet.
+#local-service
+
+# Don't poll /etc/resolv.conf for changes.
+#no-poll
+
+# Don't read /etc/resolv.conf. Get upstream servers only from the command
+# line or the dnsmasq configuration file (see the "server" directive below).
+#no-resolv
+
+# Specify IP address(es) of other DNS servers for queries not handled
+# directly by consul. There is normally one 'server' entry set for every
+# 'nameserver' parameter found in '/etc/resolv.conf'. See dnsmasq(8)'s
+# 'server' configuration option for details.
+#server=1.2.3.4
+#server=208.67.222.222
+#server=8.8.8.8
+
+# Set the size of dnsmasq's cache. The default is 150 names. Setting the
+# cache size to zero disables caching.
+#cache-size=65536
+
+#Allow insecure queries to local resolvers
+server:
+  do-not-query-localhost: no
+  domain-insecure: "consul"
+
+#Add consul as a stub-zone
+stub-zone:
+  name: "consul"
+  stub-addr: 127.0.0.1@8600
+include: "/etc/unbound/unbound.conf.d/*.conf"
+
+#---/etc/systemd/resolved.conf---
+DNS=127.0.0.1
+Domains=~consul
+
+iptables -t nat -A OUTPUT -d localhost -p udp -m udp --dport 53 -j REDIRECT --to-ports 8600
+iptables -t nat -A OUTPUT -d localhost -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 8600
+
+iptables -t nat -A PREROUTING -p udp -m udp --dport 53 -j REDIRECT --to-ports 8600
+iptables -t nat -A PREROUTING -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 8600
+iptables -t nat -A OUTPUT -d localhost -p udp -m udp --dport 53 -j REDIRECT --to-ports 8600
+iptables -t nat -A OUTPUT -d localhost -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 8600
+
+
+#Query Consul DNS and BIND
+
+{
+  "service": {
+    "name": "redis",
+    "port": 80
+  }
+}
+
+curl --data @redis.json http://127.0.0.1:8500/v1/catalog/register
+
+dig @localhost -p 8600 primary.redis.service.dc1.consul. A
+dig @localhost -p 53 primary.redis.service.dc1.consul. A
+
+
+
+
+
+
+
+
+
+
